@@ -264,82 +264,84 @@ AbiInfo abiinfo = JSON.parseObject(abi, AbiInfo.class);
 ```
 2. 构造参数
 
-   将函数参数转换成虚拟机可以执行的字节码，详细的字节码数据请查看本文当末尾。
-   假设调用某合约中函数需要如下信息：
-   函数名，参数1，参数2
-   转换成虚拟机能够识别的字节码：
-   * 将参数放入list集合中
-   ```
-   list.add(函数名);
-   tempList.add(参数1);
-   tempList.add(参数2);
-   list.add(tempList);
-   ```
-   * 反序遍历list集合
-     如果遇到list集合，将list集合中的数据反序遍历并压入栈中，然后将该list集合的大小压入栈中，sb.pushPack();
+将函数参数转换成虚拟机可以执行的字节码，详细的字节码数据请查看本文当末尾。
+假设调用某合约中函数需要如下信息：
+函数名，参数1，参数2
+转换成虚拟机能够识别的字节码：
+* 将参数放入list集合中
+```
+list.add(函数名);
+tempList.add(参数1);
+tempList.add(参数2);
+list.add(tempList);
+```
+* 反序遍历list集合
+ 如果遇到list集合，将list集合中的数据反序遍历并压入栈中，然后将该list集合的大小压入栈中，sb.pushPack();
 
-   * 将参数压入栈中进行的操作（以Java中的数据类型为例）
-     如果参数是boolean类型数据。
+* 将参数压入栈中进行的操作（以Java中的数据类型为例）
+ 如果参数是boolean类型数据。
 
-     ```
-     //true对应的字节码是0x51,false对应的字节码是0x00
-     public ScriptBuilder push(boolean b) {
-        if(b == true) {
-            return add(ScriptOp.OP_1);
-        }
-        return add(ScriptOp.OP_0);
+```
+ //true对应的字节码是0x51,false对应的字节码是0x00
+ public ScriptBuilder push(boolean b) {
+    if(b == true) {
+        return add(ScriptOp.OP_1);
     }
-     ```
+    return add(ScriptOp.OP_0);
+}
+```
 
-     如果参数是BigInteger
+如果参数是BigInteger
 
-     ```
-     public ScriptBuilder push(BigInteger number) {
-       //判断是不是-1
-   		if (number.equals(BigInteger.ONE.negate())) {
-            return add(ScriptOp.OP_1NEGATE);
-        }
-        //判断是不是0
-   		if (number.equals(BigInteger.ZERO)) {
-            return add(ScriptOp.OP_0);
-        }
-        //判断是不是大于0并且小于等于16
-   		if (number.compareTo(BigInteger.ZERO) > 0 && number.compareTo(BigInteger.valueOf(16)) <= 0) {
-            return add((byte) (ScriptOp.OP_1.getByte() - 1 + number.byteValue()));
-        }
-        return push(number.toByteArray());
+```
+public ScriptBuilder push(BigInteger number) {
+//判断是不是-1
+if (number.equals(BigInteger.ONE.negate())) {
+    return add(ScriptOp.OP_1NEGATE);
+}
+//判断是不是0
+if (number.equals(BigInteger.ZERO)) {
+    return add(ScriptOp.OP_0);
+}
+//判断是不是大于0并且小于等于16
+if (number.compareTo(BigInteger.ZERO) > 0 && number.compareTo(BigInteger.valueOf(16)) <= 0) {
+    return add((byte) (ScriptOp.OP_1.getByte() - 1 + number.byteValue()));
+}
+return push(number.toByteArray());
+}
+```
+
+如果参数是byte数组
+
+```
+ public ScriptBuilder push(byte[] data) {
+    if (data == null) {
+    	throw new NullPointerException();
     }
-     ```
-
-     如果参数是byte数组
-
-     ```
-     public ScriptBuilder push(byte[] data) {
-        if (data == null) {
-        	throw new NullPointerException();
-        }
-        if (data.length <= (int)ScriptOp.OP_PUSHBYTES75.getByte()) {
-            ms.write((byte)data.length);
-            ms.write(data, 0, data.length);
-        } else if (data.length < 0x100) {
-            add(ScriptOp.OP_PUSHDATA1);
-            ms.write((byte)data.length);
-            ms.write(data, 0, data.length);
-        } else if (data.length < 0x10000) {
-            add(ScriptOp.OP_PUSHDATA2);
-   		ms.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort((short)data.length).array(), 0, 2);
-            ms.write(data, 0, data.length);
-        } else if (data.length < 0x100000000L) {
-            add(ScriptOp.OP_PUSHDATA4);
-            ms.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(data.length).array(), 0, 4);
-            ms.write(data, 0, data.length);
-        } else {
-            throw new IllegalArgumentException();
-        }
-        return this;
+    if (data.length <= (int)ScriptOp.OP_PUSHBYTES75.getByte()) {
+        ms.write((byte)data.length);
+        ms.write(data, 0, data.length);
+    } else if (data.length < 0x100) {
+        add(ScriptOp.OP_PUSHDATA1);
+        ms.write((byte)data.length);
+        ms.write(data, 0, data.length);
+    } else if (data.length < 0x10000) {
+        add(ScriptOp.OP_PUSHDATA2);
+		ms.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort((short)data.length).array(), 0, 2);
+        ms.write(data, 0, data.length);
+    } else if (data.length < 0x100000000L) {
+        add(ScriptOp.OP_PUSHDATA4);
+        ms.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(data.length).array(), 0, 4);
+        ms.write(data, 0, data.length);
+    } else {
+        throw new IllegalArgumentException();
     }
-     ```
+    return this;
+}
+```
+
 * Java转换参数的示例：
+
 ```
 byte[] params = createCodeParamsScript(list);
 public byte[] createCodeParamsScript(List<Object> list) {
