@@ -1,5 +1,5 @@
 # SDK 开发文档
-* [1. 密码学相关](# 1.密码学相关)
+* [1. 密码学相关](#1.密码学相关)
  * [1.1 公私钥对生成](#1.1公私钥对生成)
  * [1.2 账户地址生成方案](#1.2账户地址生成方案)
 * [2. 构造交易](#2构造交易)
@@ -108,6 +108,40 @@ public Account(byte[] data, KeyType type, Object... params) throws Exception {
         }
     }
 ```
+方法三：
+
+```
+//根据公钥获得Account，
+private void parsePublicKey(byte[] publickey) throws Exception {
+        if (data == null) {
+            throw new Exception("null input");
+        }
+        if (data.length < 2) {
+            throw new Exception("invalid data");
+        }
+        this.param = null;
+        this.privateKey = null;
+        this.publicKey = null;
+        this.type = KeyType.fromLabel(data[0]);
+        switch (this.type) {
+            case ECDSA:
+            case SM2:
+                Curve c = Curve.fromLabel(data[1]);
+                ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec(c.toString());
+                ECParameterSpec param = new ECNamedCurveSpec(spec.getName(), spec.getCurve(), spec.getG(), spec.getN());
+                ECPublicKeySpec pubSpec = new ECPublicKeySpec(
+                        ECPointUtil.decodePoint(
+                                param.getCurve(),
+                                Arrays.copyOfRange(data, 2, data.length)),
+                        param);
+                KeyFactory kf = KeyFactory.getInstance("EC", "BC");
+                this.publicKey = kf.generatePublic(pubSpec);
+                break;
+            default:
+                throw new Exception("unknown public key type");
+        }
+    }
+```
 
 ### 1.2 账户地址生成方案
 
@@ -182,7 +216,7 @@ public static Address addressFromPubKey(byte[] publicKey) {
             throw new UnsupportedOperationException(ex);
         }
     }
-    //根据合约hex和虚拟机类型获得address
+    //根据合约hex和虚拟机类型获得智能合约的address
     public static String getCodeAddress(String codeHexStr,byte vmtype){
         Address code = Address.toScriptHash(Helper.hexToBytes(codeHexStr));
         byte[] hash = code.toArray();
@@ -246,6 +280,7 @@ AbiInfo abiinfo = JSON.parseObject(abi, AbiInfo.class);
 
    * 将参数压入栈中进行的操作（以Java中的数据类型为例）
      如果参数是boolean类型数据。
+
      ```
      //true对应的字节码是0x51,false对应的字节码是0x00
      public ScriptBuilder push(boolean b) {
@@ -255,7 +290,9 @@ AbiInfo abiinfo = JSON.parseObject(abi, AbiInfo.class);
         return add(ScriptOp.OP_0);
     }
      ```
+
      如果参数是BigInteger
+
      ```
      public ScriptBuilder push(BigInteger number) {
        //判断是不是-1
@@ -273,7 +310,9 @@ AbiInfo abiinfo = JSON.parseObject(abi, AbiInfo.class);
         return push(number.toByteArray());
     }
      ```
+
      如果参数是byte数组
+
      ```
      public ScriptBuilder push(byte[] data) {
         if (data == null) {
@@ -327,7 +366,6 @@ try {
 }
 return sb.toArray();
 }
-
 ```
 
 3. 构造交易
@@ -884,6 +922,16 @@ RECV: {"Action":"Notify","Desc":"SUCCESS","Error":0,"Result":[{"States":["707574
 ## 5. 原生合约的使用说明
 
 ### 5.1 ont和ong资产转移
+
+| 方法名 | 参数 | 返回值类型 | 描述 |
+|:--|:---|:---|:--|
+| sendTransfer       |String assetName, String sendAddr, String password, String recvAddr, long amount      | String|两个地址之间转移资产|
+|sendTransferToMany  |String assetName, String sendAddr, String password, String[] recvAddr, long[] amount  |String |给多个地址转移资产|
+|sendTransferFromMany|String assetName, String[] sendAddr, String[] password, String recvAddr, long[] amount|String |多个地址向某个地址转移资产|
+|sendOngTransferFrom |String sendAddr, String password, String to, long amount                              |String |转移ong资产|
+
+
+
 ont和ong合约address
 ```
 private final String ontContract = "ff00000000000000000000000000000000000001";
