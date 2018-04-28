@@ -22,6 +22,7 @@
 ## 1. 密码学相关
 
 ### 1.1 公私钥对生成
+
 目前Ontology支持的算法
 
 | ID | Algorithm |
@@ -108,6 +109,7 @@ public Account(byte[] data, KeyType type, Object... params) throws Exception {
         }
     }
 ```
+
 方法三：
 
 ```
@@ -158,8 +160,10 @@ neovm 类合约				： address = 0x80 + dhash160(code)[1:]
 wasm 类合约				： address = 0x90 + dhash160(code)[1:]
 后续其他vm类型合约也可以向后面拓展.
 ```
+
 交易在验签时根据地址前缀识别对应的签名算法，进行验签。 交易在执行时根据地址前缀识别对应的虚拟机类型，启动对应的vm运行合约。
 示例：
+
 ```
 //根据公钥计算的address
 public static Address addressFromPubKey(byte[] publicKey) {
@@ -252,6 +256,7 @@ WASMVM(0x90);
 ```
 
 ### 2.1 Neo合约构造交易
+
 1. 读取合约abi文件
 
 ```
@@ -265,24 +270,17 @@ AbiInfo abiinfo = JSON.parseObject(abi, AbiInfo.class);
 2. 构造参数
 
 将函数参数转换成虚拟机可以执行的字节码，详细的字节码数据请查看本文当末尾。
-假设调用某合约中函数需要如下信息：
+假设调用某合约中函数需要如下参数：
 函数名，参数1，参数2
 转换成虚拟机能够识别的字节码：
-* 将参数放入list集合中
-```
-list.add(函数名);
-tempList.add(参数1);
-tempList.add(参数2);
-list.add(tempList);
-```
-* 反序遍历list集合
- 如果遇到list集合，将list集合中的数据反序遍历并压入栈中，然后将该list集合的大小压入栈中，sb.pushPack();
+* 反序转换参数
+ 如果遇到数组或者集合类型的数据，将数组或集合中的数据反序遍历并压入栈中，然后将该数组或者集合的大小压入栈中，然后在压入OP_PACK(0xC1)字节码;
 
 * 将参数压入栈中进行的操作（以Java中的数据类型为例）
  如果参数是boolean类型数据。
 
 ```
- //true对应的字节码是0x51,false对应的字节码是0x00
+ //true对应的字节码是OP_1(0x51),false对应的字节码是OP_0(0x00)
  public ScriptBuilder push(boolean b) {
     if(b == true) {
         return add(ScriptOp.OP_1);
@@ -292,6 +290,12 @@ list.add(tempList);
 ```
 
 如果参数是BigInteger
+
+需要要将参数按照小端序转换成byte[],然后将byte[]转换成BigInteger对象，在进行如下操作：
+判断是不是-1,如果是，往栈中压入OP_1NEGATE(0x4F)
+判断是不是0,如果是，往栈中压入OP_0(0x00)
+判断是不是大于0并且小于等于16,如果是，往栈中压入ScriptOp.OP_1.getByte() - 1 + number.byteValue()
+其他的情况，往栈中压入该值的字节数组
 
 ```
 public ScriptBuilder push(BigInteger number) {
@@ -312,6 +316,10 @@ return push(number.toByteArray());
 ```
 
 如果参数是byte数组
+如果字节数组的长度小于OP_PUSHBYTES75，写入数组长度，然后写入数据数据
+如果字节数组的长度小于0x100，往栈中压入OP_PUSHDATA1(0x4C)，写入数组长度，然后写入数据数据
+如果字节数组的长度小于0x10000，往栈中压入OP_PUSHDATA2(0x4D)，写入数组长度，然后写入数据数据（详见下面例子）
+如果字节数组的长度小于0x100000000L，往栈中压入OP_PUSHDATA4(0x4E)，写入数组长度，然后写入数据数据（详见下面例子）
 
 ```
  public ScriptBuilder push(byte[] data) {
@@ -403,6 +411,10 @@ public Contract(byte version,byte[] code,Address constracHash, String method,byt
 
 ```
 4. 交易签名
+a 将交易对象序列化成字节数据
+b 对交易的字节数组进行两次sha256运算得到txhash
+c 对txHash进行签名
+
 ```
 //将交易对象中的字段值转换成字节数组txBytes
 ByteArrayOutputStream ms = new ByteArrayOutputStream();
@@ -422,13 +434,21 @@ String txhash = Digest.sha256(Digest.sha256(txBytes))
 byte[] signature = tx.sign(accounts[i][j], getWalletMgr().getSignatureScheme());
 //给Transaction中的字段赋值
 tx.sigs = sigs;
-//交易签名结构体如下
+```
+
+交易签名结构体如下
+```
 public class Sig implements Serializable {
     public byte[][] pubKeys = null;
     public int M;
     public byte[][] sigData;
  }
 ```
+
+属性说明
+    pubKeys 签名的公钥
+    M 需要的签名的公钥数
+    sigData 签名数据
 
 * 签名示例：
 
@@ -452,7 +472,7 @@ public Transaction signTx(Transaction tx, Account[][] accounts) throws Exception
 ```
 
 5. 发送交易
-  1. 将交易实例转换成字节数组
+  1 将交易实例转换成字节数组
   txBytes
   ```
   byte[] txBytes = toArray();
@@ -468,7 +488,8 @@ public Transaction signTx(Transaction tx, Account[][] accounts) throws Exception
 		}
     }
   ```
-  2. 将txBytes转换成十六进制字符串
+
+  2 将txBytes转换成十六进制字符串
   ```
   String txHex = toHexString(txBytes);
   public static String toHexString(byte[] value) {
@@ -506,11 +527,12 @@ public String sendTransaction(boolean preExec, String userid, String action, Str
 
 ### 2.2 Wasm合约构造交易
 
-  1. 构造调用合约中的方法需要的参数；
+  1 构造调用合约中的方法需要的参数；
 
-     描述
+依次将参数的值和类型放入map集合中，然后转换成json字符串
+
   ```
-  //交合约函数中需要的参数转换成虚拟机能够运行的字节码
+  //合约函数中需要的参数json字符串
   public String buildWasmContractJsonParam(Object[] objs) {
         List params = new ArrayList();
         for (int i = 0; i < objs.length; i++) {
@@ -549,12 +571,15 @@ public String sendTransaction(boolean preExec, String userid, String action, Str
         return JSON.toJSONString(result);
     }
   ```
-  2. 构造交易；
+
+  2 构造交易；
   ```
   //需要的参数：合约hash，合约函数名，虚拟机类型，费用实例
   Transaction tx = ontSdk.getSmartcodeTx().makeInvokeCodeTransaction(codeAddress,"add",params.getBytes(),VmType.WASMVM.value(),new Fee[0]);
   ```
-  3. 交易签名(如果是预执行不需要签名)；
+>参数说明: codeAddress是智能合约address，“add”是调用的合约函数名，params.getBytes()参数的字节形式，VmType.WASMVM.value() wasm合约类型值，
+
+  3 交易签名(如果是预执行不需要签名)；
     和Neo合约中一样
 
 * 示例：
@@ -645,27 +670,11 @@ Onotology链支持Restful、RPC和Websocket连接。
 
 ### 3.2 错误码
 
-
-| 返回代码 | 描述信息 | 说明 |
-| :---- | ----------------------------- | ----------------- |
-| 0 | SUCCESS | 成功 |
-| 41001 | SESSION_EXPIRED | 会话无效或已过期（ 需要重新登录） |
-| 41002 | SERVICE_CEILING | 达到服务上限 |
-| 41003 | ILLEGAL_DATAFORMAT | 不合法数据格式 |
-| 41004 | INVALID_VERSION| 不合法的版本 |
-| 42001 | INVALID_METHOD | 无效的方法 |
-| 42002 | INVALID_PARAMS | 无效的参数 |
-| 43001 | INVALID_TRANSACTION | 无效的交易 |
-| 43002 | INVALID_ASSET | 无效的资产 |
-| 43003 | INVALID_BLOCK | 无效的块 |
-| 44001 | UNKNOWN_TRANSACTION | 找不到交易 |
-| 44002 | UNKNOWN_ASSET | 找不到资产 |
-| 44003 | UNKNOWN_BLOCK | 找不到块 |
-| 44004 | UNKNWN_CONTRACT | 找不到合约 |
-| 45001 | INTERNAL_ERROR | 内部错误 |
-| 47001 | SMARTCODE_ERROR| 智能合约错误 |
+见本文下面附件
 
 ## 4 智能合约使用说明
+
+具体实现可以参考java-sdk中智能合约调用相关文章https://ontio.github.io/documentation/ontology_java_sdk_smartcontract_zh.html
 
 ### 4.1 部署合约
 
@@ -789,7 +798,7 @@ ontSdk.getConnectMgr().sendRawTransaction(tx.toHexString());
 创建websocket线程，解析推送结果。
 
 
-* 1. 设置websocket链接
+* 1 设置websocket链接
 
 
 ```
@@ -807,7 +816,7 @@ wm.openWalletFile("OntAssetDemo.json");
 ```
 
 
-* 2. 启动websocket线程
+* 2 启动websocket线程
 
 
 ```
@@ -816,7 +825,7 @@ ontSdk.getWebSocket().startWebsocketThread(false);
 
 ```
 
-* 3. 启动结果处理线程
+* 3 启动结果处理线程
 
 
 ```
@@ -853,7 +862,7 @@ Thread thread = new Thread(
 ```
 
 
-* 4. 每6秒发送一次心跳程序，维持socket链接
+* 4 每6秒发送一次心跳程序，维持socket链接
 
 
 ```
@@ -874,7 +883,7 @@ for (;;){
 ```
 
 
-* 5. 推送结果事例详解
+* 5 推送结果事例详解
 
 
 以调用存证合约的put函数为例，
@@ -913,6 +922,7 @@ for (;;){
     ]
 }
 ```
+
 当调用put函数保存数据时，触发putRecord事件，websocket 推送的结果是{"putRecord", "arg1", "arg2", "arg3"}的十六进制字符串
 
 例子如下：
@@ -921,6 +931,7 @@ for (;;){
 RECV: {"Action":"Log","Desc":"SUCCESS","Error":0,"Result":{"Message":"Put","TxHash":"8cb32f3a1817d88d8562fdc0097a0f9aa75a926625c6644dfc5417273ca7ed71","ContractAddress":"80f6bff7645a84298a1a52aa3745f84dba6615cf"},"Version":"1.0.0"}
 RECV: {"Action":"Notify","Desc":"SUCCESS","Error":0,"Result":[{"States":["7075745265636f7264","507574","6b6579","7b2244617461223a7b22416c6772697468656d223a22534d32222c2248617368223a22222c2254657874223a2276616c75652d7465737431222c225369676e6174757265223a22227d2c2243416b6579223a22222c225365714e6f223a22222c2254696d657374616d70223a307d"],"TxHash":"8cb32f3a1817d88d8562fdc0097a0f9aa75a926625c6644dfc5417273ca7ed71","ContractAddress":"80f6bff7645a84298a1a52aa3745f84dba6615cf"}],"Version":"1.0.0"}
 ```
+
 ## 5. 原生合约的使用说明
 
 ### 5.1 ont和ong资产转移
@@ -939,6 +950,7 @@ ont和ong合约address
 private final String ontContract = "ff00000000000000000000000000000000000001";
 private final String ongContract = "ff00000000000000000000000000000000000002";
 ```
+
 State类字段如下：
 ```
 public class State implements Serializable {
@@ -949,6 +961,7 @@ public class State implements Serializable {
     ...
   }
 ```
+
 Transfers类字段如下：
 ```
 public class Transfers implements Serializable {
@@ -961,7 +974,9 @@ public class Transfers implements Serializable {
     ...
   }
 ```
+
 Contarct字段如下
+
 ```
 public class Contract implements Serializable {
     public byte version;
@@ -983,6 +998,7 @@ public class Contract implements Serializable {
   }
 ```
 * 构造参数paramBytes
+
 ```
 State state = new State(senderAddress, receiveAddress, new BigInteger(String.valueOf(amount)));
 Transfers transfers = new Transfers(new State[]{state});
@@ -990,6 +1006,7 @@ Contract contract = new Contract((byte) 0,null, Address.parse(contractAddr), "tr
 byte[] paramBytes = contarct.toArray();
 ```
 * 构造交易
+
 ```
 public InvokeCode makeInvokeCodeTransaction(String codeAddr,String method,byte[] params, byte vmtype, Fee[] fees) throws SDKException {
         if(vmtype == VmType.NEOVM.value()) {
@@ -1049,6 +1066,76 @@ public InvokeCode makeInvokeCodeTransaction(String codeAddr,String method,byte[]
 | sendGet | String addr,String password,String key                | String       |  获得链上数据 |
 
 ## 附件
+
+SDK错误码
+
+| 返回代码 | 描述信息 | 说明 |
+| :---- | ----------------------------- | ----------------- |
+| 0 | SUCCESS | 成功 |
+| 41001 | SESSION_EXPIRED | 会话无效或已过期（ 需要重新登录） |
+| 41002 | SERVICE_CEILING | 达到服务上限 |
+| 41003 | ILLEGAL_DATAFORMAT | 不合法数据格式 |
+| 41004 | INVALID_VERSION| 不合法的版本 |
+| 42001 | INVALID_METHOD | 无效的方法 |
+| 42002 | INVALID_PARAMS | 无效的参数 |
+| 43001 | INVALID_TRANSACTION | 无效的交易 |
+| 43002 | INVALID_ASSET | 无效的资产 |
+| 43003 | INVALID_BLOCK | 无效的块 |
+| 44001 | UNKNOWN_TRANSACTION | 找不到交易 |
+| 44002 | UNKNOWN_ASSET | 找不到资产 |
+| 44003 | UNKNOWN_BLOCK | 找不到块 |
+| 44004 | UNKNWN_CONTRACT | 找不到合约 |
+| 45001 | INTERNAL_ERROR | 内部错误 |
+| 47001 | SMARTCODE_ERROR| 智能合约错误 |
+|51001  |  InvalidParams |Account Error,invalid params|
+|51002  |  UnsupportedKeyType |Account Error,unsupported key type|
+|51003  |  InvalidMessage |Account Error,invalid message|
+|51004  |  WithoutPrivate |Account Error,account without private key cannot generate signature|
+|51005  |  InvalidSM2Signature |Account Error,invalid SM2 signature parameter, ID (String) excepted|
+|51006  |  AccountInvalidInput |Account Error,account without public key cannot verify signature|
+|51007  |  AccountWithoutPublicKey |Account Error,unknown key type|
+|51008  |  UnknownKeyType |Account Error,null input|
+|51009  |  NullInput |Account Error,invalid data|
+|51010  |  InvalidData |Account Error,invalid params|
+|51011  |  Decoded3bytesError |Account Error,decoded 3 bytes error|
+|51012  |  DecodePrikeyPassphraseError |Account Error,decode prikey passphrase error|
+|51013  |  PrikeyLengthError |Account Error,Prikey length error|
+|52001  |  InputError |Uint256 Error,input error|
+|52002  |  ChecksumNotValidate |Base58 Error,Checksum does not validate|
+|52003  |  InputTooShort |Base58 Error,Input too short|
+|52004  |  UnknownCurve |Curve Error,unknown curve|
+|52005  |  UnknownCurveLabel |Curve Error,unknown curve label|
+|52006  |  UnknownAsymmetricKeyType |keyType Error,unknown asymmetric key type|
+|52007  |  InvalidSignatureData |Signature Error,invalid signature data: missing the ID parameter for SM3withSM2|
+|52008  |  InvalidSignatureDataLen |Signature Error,invalid signature data length|
+|52009  |  MalformedSignature |Signature Error,malformed signature|
+|52010  |  UnsupportedSignatureScheme |Signature Error,unsupported signature scheme:|
+|53001  |  TxDeserializeError |Core Error,Transaction deserialize failed|
+|53002  |  BlockDeserializeError |Core Error,Block deserialize failed|
+|58001  |  SendRawTxError |SmartCodeTx Error,sendRawTransaction error|
+|58002  |  TypeError |SmartCodeTx Error,type error|
+|58003  |  NullCodeHash |OntIdTx Error,null codeHash|
+|58004  |  ParamError |OntIdTx Error,param error|
+|58005  |  DidNull |OntIdTx Error,SendDid or receiverDid is null in metaData|
+|58006  |  NotExistCliamIssuer |OntIdTx Error,Not exist cliam issuer|
+|58007  |  NotFoundPublicKeyId |OntIdTx Error,not found PublicKeyId|
+|58008  |  PublicKeyIdErr |OntIdTx Error,PublicKeyId err|
+|58009  |  BlockHeightNotMatch |OntIdTx Error,BlockHeight not match|
+|58010  |  NodesNotMatch |OntIdTx Error,nodes not match|
+|58011  |  ResultIsNull |OntIdTx Error,result is null|
+|58012  |  AssetNameError |OntAsset Error,asset name error|
+|58013  |  DidError |OntAsset Error,Did error|
+|58014  |  NullPkId |OntAsset Error,null pkId|
+|58015  |  NullClaimId |OntAsset Error,null claimId|
+|58016  |  NullKeyOrValue |RecordTx Error,null key or value|
+|58017  |  NullKey |RecordTx Error,null  key|
+|58018  |  GetAccountByAddressErr |WalletManager Error,getAccountByAddress err|
+|58019  |  WebsocketNotInit |OntSdk Error,websocket not init|
+|58020  |  ConnRestfulNotInit |OntSdk Error,connRestful not init|
+|58021  |  SetParamsValueValueNumError |AbiFunction Error,setParamsValue value num error|
+|58022  |  InvalidUrl |Interfaces Error,Invalid url:|
+|58023  |  AESailed |ECIES Error,AES failed initialisation -|
+|59000  |  OtherError| other error|
 
 Neo字节码：
 ```
