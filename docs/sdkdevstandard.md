@@ -51,6 +51,7 @@ SHA512withEdDSA
 * java获得公私钥对的示例
 
 方法一：
+根据加密算法名和算法需要的参数生成公私钥对
 ```
 public Account(KeyType type, Object... params) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
@@ -58,7 +59,6 @@ public Account(KeyType type, Object... params) throws Exception {
         AlgorithmParameterSpec paramSpec;
         switch (type) {
             case ECDSA:
-            case SM2:
                 if (!(params[0] instanceof String)) {
                     throw new Exception("invalid params");
                 }
@@ -80,6 +80,7 @@ public Account(KeyType type, Object... params) throws Exception {
     }
 ```
 方法二：
+根据私钥生成公钥
 ```
 //生成私钥
 byte[] privateKey = ECC.generateKey();
@@ -88,7 +89,6 @@ public Account(byte[] data, KeyType type, Object... params) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
         switch (type) {
             case ECDSA:
-            case SM2:
                 BigInteger d = new BigInteger(1, data);
                 ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec((String)params[0]);
                 ECParameterSpec paramSpec = new ECNamedCurveSpec(spec.getName(), spec.getCurve(), spec.getG(), spec.getN());
@@ -111,7 +111,6 @@ public Account(byte[] data, KeyType type, Object... params) throws Exception {
 ```
 
 方法三：
-
 ```
 //根据公钥获得Account，
 private void parsePublicKey(byte[] publickey) throws Exception {
@@ -127,7 +126,6 @@ private void parsePublicKey(byte[] publickey) throws Exception {
         this.type = KeyType.fromLabel(data[0]);
         switch (this.type) {
             case ECDSA:
-            case SM2:
                 Curve c = Curve.fromLabel(data[1]);
                 ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec(c.toString());
                 ECParameterSpec param = new ECNamedCurveSpec(spec.getName(), spec.getCurve(), spec.getG(), spec.getN());
@@ -1060,10 +1058,12 @@ public InvokeCode makeInvokeCodeTransaction(String codeAddr,String method,byte[]
 |sendGetPublicKeyStatus|String ontid,String password,byte[] pkId                               |    String    |获得公钥状态    |
 
 ### 5.3 数字存证
-|   方法名           |  参数                                        |   返回值类型  | 描述         |
-|:--------          | :------                                     |:------------ |:-------     |
-|  sendPut  | String addr,String password,String key,String value | String       |  保存数据 |
-| sendGet | String addr,String password,String key                | String       |  获得链上数据 |
+
+|   方法名       |  参数                                         |   返回值类型 | 描述                     |
+|:--------      | :------                                      |:-----------|:-------                  |
+|  sendCommit   | String ontid,String password,String claimId  | String     |  保存claimId到链上         |
+|  sendRevoke   | String ontid,String password,String claimId  | String     |  撤销claimId(状态会变成0)  |
+|  sendGetStatus| String ontid,String password,String claimId  | String     |  查询状态0代表撤销，1代表有效|
 
 ## 附件
 
