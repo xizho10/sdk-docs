@@ -51,46 +51,60 @@ SHA512withEdDSA
 * java获得公私钥对的示例
 
 方法一：
-根据加密算法名和算法需要的参数生成公私钥对
+根据加密算法名和算法需要的参数生成公私钥对。
+基本流程：
+指定hash散列算法和签名算法；
+获得加密算法框架实例并初始化；
+产生公私钥对；
 ```
-public Account(KeyType type, Object... params) throws Exception {
+public Account(SignatureScheme scheme) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
         KeyPairGenerator gen;
         AlgorithmParameterSpec paramSpec;
-        switch (type) {
-            case ECDSA:
+        KeyType keyType;
+        signatureScheme = scheme;
+        switch (scheme) {
+            case SHA256WITHECDSA:
+                keyType = KeyType.ECDSA;
+                Object[] params = new Object[]{Curve.P256.toString()};
+                curveParams = params;
                 if (!(params[0] instanceof String)) {
-                    throw new Exception("invalid params");
+                    throw new Exception(ErrorCode.InvalidParams);
                 }
-                String curveName = (String)params[0];
+                String curveName = (String) params[0];
                 paramSpec = new ECGenParameterSpec(curveName);
-                this.param = Curve.valueOf(ECNamedCurveTable.getParameterSpec(curveName).getCurve());
                 gen = KeyPairGenerator.getInstance("EC", "BC");
                 break;
             default:
                 //should not reach here
-                throw new Exception("unsupported key type");
+                throw new Exception(ErrorCode.UnsupportedKeyType);
         }
         gen.initialize(paramSpec, new SecureRandom());
         KeyPair keyPair = gen.generateKeyPair();
         this.privateKey = keyPair.getPrivate();
         this.publicKey = keyPair.getPublic();
-        this.type = type;
-        this.addressU160 = Address.toScriptHash(serializePublicKey());
+        this.keyType = keyType;
+        this.addressU160 = Address.addressFromPubKey(serializePublicKey());
     }
 ```
+
 方法二：
 根据私钥生成公钥
+
 ```
 //生成私钥
 byte[] privateKey = ECC.generateKey();
 //根据私钥生成公钥
-public Account(byte[] data, KeyType type, Object... params) throws Exception {
+public Account(byte[] data, SignatureScheme scheme) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
-        switch (type) {
-            case ECDSA:
+        signatureScheme = scheme;
+        switch (scheme) {
+            case SHA256WITHECDSA:
+                this.keyType = KeyType.ECDSA;
+                Object[] params = new Object[]{Curve.P256.toString()};
+                curveParams = params;
                 BigInteger d = new BigInteger(1, data);
-                ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec((String)params[0]);
+                ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec((String) params[0]);
                 ECParameterSpec paramSpec = new ECNamedCurveSpec(spec.getName(), spec.getCurve(), spec.getG(), spec.getN());
                 ECPrivateKeySpec priSpec = new ECPrivateKeySpec(d, paramSpec);
                 KeyFactory kf = KeyFactory.getInstance("EC", "BC");
@@ -101,32 +115,32 @@ public Account(byte[] data, KeyType type, Object... params) throws Exception {
                         new ECPoint(Q.getAffineXCoord().toBigInteger(), Q.getAffineYCoord().toBigInteger()),
                         paramSpec);
                 this.publicKey = kf.generatePublic(pubSpec);
-                this.type = type;
-                this.addressU160 = Address.toScriptHash(serializePublicKey());
+                this.addressU160 = Address.addressFromPubKey(serializePublicKey());
                 break;
             default:
-                throw new Exception("unknown key type");
+                throw new Exception(ErrorCode.UnsupportedKeyType);
         }
     }
 ```
 
 方法三：
+根据公钥获得Account
 ```
-//根据公钥获得Account，
-private void parsePublicKey(byte[] publickey) throws Exception {
+private void parsePublicKey(byte[] data) throws Exception {
         if (data == null) {
-            throw new Exception("null input");
+            throw new Exception(ErrorCode.NullInput);
         }
         if (data.length < 2) {
-            throw new Exception("invalid data");
+            throw new Exception(ErrorCode.InvalidData);
         }
-        this.param = null;
         this.privateKey = null;
         this.publicKey = null;
-        this.type = KeyType.fromLabel(data[0]);
-        switch (this.type) {
+        this.keyType = KeyType.fromLabel(data[0]);
+        switch (this.keyType) {
             case ECDSA:
+            case SM2:
                 Curve c = Curve.fromLabel(data[1]);
+                this.curveParams = new Object[]{c.toString()};
                 ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec(c.toString());
                 ECParameterSpec param = new ECNamedCurveSpec(spec.getName(), spec.getCurve(), spec.getG(), spec.getN());
                 ECPublicKeySpec pubSpec = new ECPublicKeySpec(
@@ -138,7 +152,7 @@ private void parsePublicKey(byte[] publickey) throws Exception {
                 this.publicKey = kf.generatePublic(pubSpec);
                 break;
             default:
-                throw new Exception("unknown public key type");
+                throw new Exception(ErrorCode.UnknownKeyType);
         }
     }
 ```
