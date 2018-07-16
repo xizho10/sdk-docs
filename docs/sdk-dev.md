@@ -21,11 +21,17 @@ java code example:
 https://github.com/ontio/ontology-java-sdk/blob/master/src/main/java/com/github/ontio/sdk/manager/ConnectMgr.java
 
 need complete:
+
 get transaction
+
 get smartcontract
+
 get smartcontract event
+
 get block
+
 get block height
+
 send transaction
 
 ## 2. wallet
