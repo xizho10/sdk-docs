@@ -5,14 +5,15 @@
 
 content：
 * [dev](#dev)
-	* [1. connect with chain](#1-connect-with-chain)
+	* [1. http rpc](#1-http rpc)
 	* [2. wallet](#2-wallet)
 	* [3. asset](#3-asset)
 	* [4. identity](#3-identity)
 
-## 1. connect with chain
+## 1. http rpc
 
->rpc: https://github.com/ontio/ontology/blob/master/docs/specifications/rpc_api.md
+>rpc: 
+https://github.com/ontio/ontology/blob/master/docs/specifications/rpc_api.md
 
 
 java code example:
@@ -30,7 +31,9 @@ send transaction
 ## 2. wallet
 
 >wallet https://github.com/ontio/ontology-ts-sdk/blob/master/docs/en/Wallet_File_Specification.md 
+
 1.account: add update get delete
+
 2.identity: add update get delete
 
 >account https://github.com/ontio-community/specifications/blob/master/sdk_dev_standard/en/account.md
@@ -54,6 +57,7 @@ https://github.com/ontio/ontology-java-sdk/blob/master/src/main/java/com/github/
 ## 3. asset
 
 >native asset include ont and ong.
+
 https://github.com/ontio/ontology-java-sdk/blob/master/docs/en/asset.md
 
 java code example:
@@ -78,7 +82,8 @@ don't need do this
 
 ## 4. identity
 
-https://github.com/ontio/ontology-java-sdk/blob/master/docs/en/identity_claim.md
+> identity rigistry and get ddo
+ https://github.com/ontio/ontology-java-sdk/blob/master/docs/en/identity_claim.md
 
 java code example:
 
